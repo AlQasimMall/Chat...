@@ -6,11 +6,51 @@ const urlsToCache = [
     './manifest.json',
     './service-worker.js',
     './offline.html',
+    // إضافة ملفات الأصوات للتخزين المؤقت
+    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
+    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
+    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
     'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
     'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.rtl.min.css',
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
     'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css'
 ];
+
+// إضافة معالجة خاصة للأصوات
+self.addEventListener('fetch', event => {
+    // تجاهل طلبات Firebase وAnalytics
+    if (event.request.url.includes('firebase') || 
+        event.request.url.includes('google-analytics') ||
+        event.request.url.includes('chrome-extension')) {
+        return;
+    }
+
+    // معالجة خاصة لملفات الصوت
+    if (event.request.url.includes('/sounds/')) {
+        event.respondWith(
+            caches.match(event.request)
+                .then(response => {
+                    if (response) {
+                        return response;
+                    }
+                    return fetch(event.request)
+                        .then(networkResponse => {
+                            if (networkResponse && networkResponse.status === 200) {
+                                const cache = caches.open(CACHE_NAME);
+                                cache.then(cache => cache.put(event.request, networkResponse.clone()));
+                            }
+                            return networkResponse;
+                        })
+                        .catch(() => {
+                            // إرجاع صوت احتياطي في حالة الفشل
+                            return caches.match('./sounds/fallback.mp3');
+                        });
+                })
+        );
+        return;
+    }
+
+    
 
 // التثبيت والتخزين المؤقت
 self.addEventListener('install', event => {
