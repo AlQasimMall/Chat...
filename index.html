@@ -2499,6 +2499,110 @@ audio {
     }
 }
 
+
+
+
+
+.typing-indicator {
+    position: absolute;
+    bottom: 100%;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    animation: fadeIn 0.3s ease;
+}
+
+.typing-dots span {
+    animation: typingDots 1.4s infinite;
+    opacity: 0;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.4s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.8s; }
+
+@keyframes typingDots {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.unread-badge {
+    background: #ff4444;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 12px;
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    display: none;
+}
+
+.message-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.5);
+}
+
+.message-sent .message-status {
+    justify-content: flex-end;
+}
+
+.user-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-left: 5px;
+}
+
+.user-status.online {
+    background: #4CAF50;
+}
+
+.user-status.offline {
+    background: #9e9e9e;
+}
+
+/* تحسينات نافذة المكالمة */
+.call-interface {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+.call-controls {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+}
+
+.call-control-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.call-control-btn:hover {
+    transform: scale(1.1);
+}
+
+.end-call {
+    background: #f44336;
+}
+
     </style>
 </head>
 <body>
@@ -2725,6 +2829,16 @@ audio {
                 </form>
             </div>
         </div>
+        
+        <!-- إضافة مؤشر الكتابة -->
+<div id="typing-indicator" class="typing-indicator" style="display: none;">
+    <span class="typing-text">يكتب الآن</span>
+    <span class="typing-dots">
+        <span>.</span>
+        <span>.</span>
+        <span>.</span>
+    </span>
+</div>
 
         <!-- واجهة الاتصال -->
         <div id="call-interface" class="call-interface">
@@ -6096,6 +6210,166 @@ async function endCall() {
         });
     }
 }
+
+// تحديث إعدادات مراقب حالة المستخدم
+function setupUserPresence() {
+    if (!currentUser) return;
+
+    // تحديث حالة الاتصال
+    const userStatusRef = database.ref(`users/${currentUser.uid}/status`);
+    const userLastActiveRef = database.ref(`users/${currentUser.uid}/lastActive`);
+
+    // عند الاتصال
+    database.ref('.info/connected').on('value', (snapshot) => {
+        if (!snapshot.val()) return;
+
+        userStatusRef.onDisconnect().set('offline')
+            .then(() => {
+                userStatusRef.set('online');
+                userLastActiveRef.set(firebase.database.ServerValue.TIMESTAMP);
+            });
+    });
+
+    // مراقبة حالة الكتابة
+    const typingRef = database.ref(`typing/${currentUser.uid}`);
+    typingRef.onDisconnect().remove();
+}
+
+// مراقبة حالة الكتابة
+let typingTimeout;
+function handleTyping() {
+    if (!currentUser || !currentChatUser) return;
+
+    const typingRef = database.ref(`typing/${currentChatUser.uid}/${currentUser.uid}`);
+    
+    // عند بدء الكتابة
+    document.getElementById('message-input').addEventListener('input', () => {
+        typingRef.set({
+            typing: true,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            typingRef.remove();
+        }, 3000);
+    });
+
+    // مراقبة حالة كتابة المستخدم الآخر
+    database.ref(`typing/${currentUser.uid}/${currentChatUser.uid}`).on('value', (snapshot) => {
+        const typingIndicator = document.getElementById('typing-indicator');
+        if (snapshot.exists()) {
+            typingIndicator.style.display = 'block';
+            playTypingSound();
+        } else {
+            typingIndicator.style.display = 'none';
+        }
+    });
+}
+
+// تحسين نظام الإشعارات
+function setupNotifications() {
+    if (!currentUser) return;
+
+    // مراقبة الرسائل الجديدة
+    database.ref('messages').on('child_added', (snapshot) => {
+        const message = snapshot.val();
+        if (message.receiverId === currentUser.uid && !message.read) {
+            showNotification(message);
+            playMessageSound();
+            updateUnreadCount(message.senderId);
+        }
+    });
+}
+
+// عرض الإشعارات
+function showNotification(message) {
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "granted") {
+        const notification = new Notification("رسالة جديدة", {
+            body: message.message,
+            icon: "/path/to/icon.png"
+        });
+
+        notification.onclick = () => {
+            window.focus();
+            showChat(message.senderId);
+        };
+    }
+}
+
+// تحديث عدد الرسائل غير المقروءة
+function updateUnreadCount(senderId) {
+    const userElement = document.querySelector(`[data-user-id="${senderId}"]`);
+    if (userElement) {
+        const badge = userElement.querySelector('.unread-badge');
+        if (badge) {
+            const count = parseInt(badge.textContent) || 0;
+            badge.textContent = count + 1;
+            badge.style.display = 'block';
+        }
+    }
+}
+
+// تشغيل صوت الكتابة
+function playTypingSound() {
+    const audio = new Audio('/path/to/typing-sound.mp3');
+    audio.play().catch(console.error);
+}
+
+// تشغيل صوت الرسالة الجديدة
+function playMessageSound() {
+    const audio = new Audio('/path/to/message-sound.mp3');
+    audio.play().catch(console.error);
+}
+
+// تحديث نظام الاتصال
+function setupCallSystem() {
+    if (!currentUser) return;
+
+    // مراقبة المكالمات الواردة
+    database.ref(`calls/${currentUser.uid}`).on('child_added', (snapshot) => {
+        const callData = snapshot.val();
+        if (callData.type === 'incoming' && !callData.answered) {
+            showIncomingCall(callData);
+            playRingtone();
+        }
+    });
+}
+
+// عرض نافذة المكالمة الواردة
+function showIncomingCall(callData) {
+    Swal.fire({
+        title: 'مكالمة واردة',
+        text: `${callData.callerName} يتصل بك`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'رد',
+        cancelButtonText: 'رفض',
+        allowOutsideClick: false,
+        allowEscapeKey: false
+    }).then((result) => {
+        if (result.isConfirmed) {
+            answerCall(callData);
+        } else {
+            rejectCall(callData);
+        }
+    });
+}
+
+// استدعاء الدوال عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', () => {
+    setupUserPresence();
+    handleTyping();
+    setupNotifications();
+    setupCallSystem();
+    
+    // طلب إذن الإشعارات
+    if ("Notification" in window) {
+        Notification.requestPermission();
+    }
+});
 
 
 </script>
