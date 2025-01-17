@@ -5566,39 +5566,45 @@ function showPermissionDialog(type) {
     });
 }
 
-// دالة بدء المكالمة (صوت/فيديو)
+// تحسين معالجة الاتصال
 async function startCall(type) {
-    const button = document.querySelector(`.${type}-call`);
-    if (!button) return;
-    
-    button.classList.add('calling');
-
     try {
+        // التحقق من توفر WebRTC
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('متصفحك لا يدعم ميزة الاتصال');
+        }
+
+        // التحقق من وجود مستخدم حالي ومستخدم للمحادثة
         if (!currentUser || !currentChatUser) {
             throw new Error('معلومات المستخدم غير متوفرة');
         }
 
-        const hasPermissions = await checkAndRequestPermissions(type);
-        if (!hasPermissions) {
-            button.classList.remove('calling');
-            return;
-        }
-
-        const mediaConfig = {
-            audio: mediaConstraints.audio,
-            video: type === 'video' ? mediaConstraints.video : false
+        // إعدادات الوسائط
+        const mediaConstraints = {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
+            video: type === 'video' ? {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user'
+            } : false
         };
 
-        localStream = await navigator.mediaDevices.getUserMedia(mediaConfig);
+        // طلب الأذونات وتشغيل الوسائط
+        localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        
+        // إظهار واجهة المكالمة
         showCallInterface(type);
-        setupPeerConnection();
-
-        // إضافة صوت الرنين للمتصل
-        callAudio.startRingback();
-
-        // إرسال عرض المكالمة
+        
+        // إضافة المستمعين للمكالمة
+        setupCallListeners();
+        
+        // إرسال طلب الاتصال
         const callOffer = {
-            type: `${type}-call-offer`,
+            type: `${type}-call`,
             from: currentUser.uid,
             to: currentChatUser.uid,
             timestamp: Date.now()
@@ -5606,12 +5612,95 @@ async function startCall(type) {
 
         await database.ref(`calls/${currentChatUser.uid}/active`).set(callOffer);
 
+        // تشغيل صوت الرنين
+        playCallSound('ringback');
+
     } catch (error) {
-        console.error(`خطأ في بدء مكالمة ${type}:`, error);
-        button.classList.remove('calling');
-        callAudio.stopAll();
         handleCallError(error);
     }
+}
+
+// تحسين معالجة المكالمات الواردة
+function handleIncomingCall(callData) {
+    return new Promise(async (resolve) => {
+        try {
+            const callerSnapshot = await database.ref(`users/${callData.from}`).once('value');
+            const callerData = callerSnapshot.val();
+            
+            if (!callerData) {
+                throw new Error('بيانات المتصل غير متوفرة');
+            }
+
+            playCallSound('ringtone');
+
+            // عرض نافذة المكالمة الواردة
+            const result = await Swal.fire({
+                title: `${callerData.username} يتصل بك`,
+                text: callData.type === 'video-call' ? 'مكالمة فيديو واردة' : 'مكالمة صوتية واردة',
+                imageUrl: callerData.avatarUrl || '/api/placeholder/45/45',
+                showCancelButton: true,
+                confirmButtonText: 'رد',
+                cancelButtonText: 'رفض',
+                allowOutsideClick: false,
+                showClass: { popup: 'animate__animated animate__fadeInDown' },
+                hideClass: { popup: 'animate__animated animate__fadeOutUp' }
+            });
+
+            stopCallSounds();
+
+            if (result.isConfirmed) {
+                await acceptCall(callData);
+            } else {
+                await rejectCall(callData);
+            }
+
+            resolve(result.isConfirmed);
+
+        } catch (error) {
+            handleCallError(error);
+            resolve(false);
+        }
+    });
+}
+
+// وظائف إدارة الأصوات
+
+
+function playCallSound(type) {
+    stopCallSounds();
+    if (callSounds[type]) {
+        callSounds[type].loop = true;
+        callSounds[type].play().catch(console.error);
+    }
+}
+
+function stopCallSounds() {
+    Object.values(callSounds).forEach(sound => {
+        sound.pause();
+        sound.currentTime = 0;
+    });
+}
+
+// معالجة أخطاء المكالمة
+function handleCallError(error) {
+    console.error('خطأ في المكالمة:', error);
+    
+    let message = 'حدث خطأ في المكالمة';
+    
+    if (error.name === 'NotAllowedError') {
+        message = 'يرجى السماح بالوصول إلى الكاميرا والميكروفون';
+    } else if (error.name === 'NotFoundError') {
+        message = 'الكاميرا أو الميكروفون غير متوفر';
+    }
+
+    Swal.fire({
+        icon: 'error',
+        title: 'خطأ في المكالمة',
+        text: message,
+        confirmButtonText: 'حسناً'
+    });
+
+    endCall();
 }
 
 // دوال التحكم في الواجهة
@@ -5724,80 +5813,7 @@ function startVideoCall() {
     startCall('video');
 }
 
-// الدالة الرئيسية المحسنة للمكالمات
-async function startCall(type) {
-    const button = document.querySelector(`.${type}-call`);
-    if (!button) return;
-    
-    button.classList.add('calling');
 
-    try {
-        if (!currentUser || !currentChatUser) {
-            throw new Error('معلومات المستخدم غير متوفرة');
-        }
-
-        const hasPermissions = await checkAndRequestPermissions(type);
-        if (!hasPermissions) {
-            button.classList.remove('calling');
-            return;
-        }
-
-        const mediaConfig = {
-            audio: mediaConstraints.audio,
-            video: type === 'video' ? mediaConstraints.video : false
-        };
-
-        localStream = await navigator.mediaDevices.getUserMedia(mediaConfig);
-        showCallInterface(type);
-        setupPeerConnection();
-
-        // إضافة صوت الرنين للمتصل
-        callAudio.startRingback();
-
-        // إرسال عرض المكالمة
-        const callOffer = {
-            type: `${type}-call-offer`,
-            from: currentUser.uid,
-            to: currentChatUser.uid,
-            timestamp: Date.now()
-        };
-
-        await database.ref(`calls/${currentChatUser.uid}/active`).set(callOffer);
-
-    } catch (error) {
-        console.error(`خطأ في بدء مكالمة ${type}:`, error);
-        button.classList.remove('calling');
-        callAudio.stopAll();
-        handleCallError(error);
-    }
-}
-
-// تحسين دالة معالجة الأخطاء
-function handleCallError(error) {
-    let errorMessage = 'حدث خطأ في بدء المكالمة';
-    
-    switch(error.name) {
-        case 'NotAllowedError':
-            errorMessage = 'تم رفض الإذن للوصول إلى الكاميرا/الميكروفون';
-            break;
-        case 'NotFoundError':
-            errorMessage = 'لم يتم العثور على كاميرا أو ميكروفون';
-            break;
-        case 'NotReadableError':
-            errorMessage = 'الكاميرا أو الميكروفون مستخدم من قبل تطبيق آخر';
-            break;
-        case 'TypeError':
-            errorMessage = 'معلومات المستخدم غير متوفرة';
-            break;
-    }
-
-    Swal.fire({
-        icon: 'error',
-        title: 'خطأ في المكالمة',
-        text: errorMessage,
-        confirmButtonText: 'حسناً'
-    });
-}
 // إضافة مراقب لإشعارات المكالمات
 function setupCallListeners() {
     if (!currentUser) return;
@@ -5978,169 +5994,31 @@ function endCall() {
 }
 
 // إضافة متغيرات الأصوات في بداية الملف
-// تحديث متغيرات الأصوات باستخدام روابط مباشرة وعامة
 const callSounds = {
-    ringback: new Audio('https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6'),
-    ringtone: new Audio('https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6'),
-    callEnd: new Audio('https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6)
+    ringback: new Audio('https://raw.githubusercontent.com/sinch/rtc-reference-applications/master/resources/sounds/ringback.wav'),
+    ringtone: new Audio('https://raw.githubusercontent.com/sinch/rtc-reference-applications/master/resources/sounds/ringtone.wav'),
+    callEnd: new Audio('https://raw.githubusercontent.com/sinch/rtc-reference-applications/master/resources/sounds/hangup.wav')
 };
 
-// إضافة متغير للمؤقت
-let callTimer = null;
-let callDuration = 60; // مدة المكالمة بالثواني
-
-// تحديث دالة بدء المكالمة
-async function startCall(type) {
-    const button = document.querySelector(`.${type}-call`);
-    if (!button) return;
-    
-    button.classList.add('calling');
-
-    try {
-        if (!currentUser || !currentChatUser) {
-            throw new Error('معلومات المستخدم غير متوفرة');
-        }
-
-        const hasPermissions = await checkAndRequestPermissions(type);
-        if (!hasPermissions) {
-            button.classList.remove('calling');
-            return;
-        }
-
-        // تشغيل صوت الرنين
-        callAudio.startRingback();
-        
-        // بدء العداد التنازلي
-        startCallTimer();
-
-        const mediaConfig = {
-            audio: mediaConstraints.audio,
-            video: type === 'video' ? mediaConstraints.video : false
-        };
-
-        localStream = await navigator.mediaDevices.getUserMedia(mediaConfig);
-        showCallInterface(type);
-        setupPeerConnection();
-
-        // إرسال عرض المكالمة
-        const callOffer = {
-            type: `${type}-call-offer`,
-            from: currentUser.uid,
-            to: currentChatUser.uid,
-            timestamp: Date.now()
-        };
-
-        await database.ref(`calls/${currentChatUser.uid}/active`).set(callOffer);
-
-    } catch (error) {
-        console.error(`خطأ في بدء مكالمة ${type}:`, error);
-        button.classList.remove('calling');
-        callAudio.stopAll();
-        clearCallTimer();
-        handleCallError(error);
-    }
-}
-
-// دالة بدء العداد التنازلي
-function startCallTimer() {
-    const statusElement = document.getElementById('call-status');
-    let timeLeft = callDuration;
-    
-    clearCallTimer(); // تنظيف أي مؤقت سابق
-    
-    callTimer = setInterval(() => {
-        timeLeft--;
-        
-        if (statusElement) {
-            statusElement.textContent = `الوقت المتبقي: ${formatTime(timeLeft)}`;
-        }
-        
-        if (timeLeft <= 0) {
-            clearCallTimer();
-            endCall();
-            Swal.fire({
-                title: 'انتهت المكالمة',
-                text: 'لم يتم الرد على المكالمة',
-                icon: 'info',
-                timer: 2000,
-                showConfirmButton: false
-            });
-        }
-    }, 1000);
-}
-
-// دالة تنظيف المؤقت
-function clearCallTimer() {
-    if (callTimer) {
-        clearInterval(callTimer);
-        callTimer = null;
-    }
-}
-
-// دالة تنسيق الوقت
-function formatTime(seconds) {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${padZero(minutes)}:${padZero(remainingSeconds)}`;
-}
-
-function padZero(num) {
-    return num < 10 ? `0${num}` : num;
-}
-
-// تحديث دوال التحكم بالأصوات
+// دوال التحكم بالأصوات
 const callAudio = {
     startRingback() {
-        try {
-            callSounds.ringback.currentTime = 0;
-            callSounds.ringback.loop = true;
-            const playPromise = callSounds.ringback.play();
-            if (playPromise) {
-                playPromise.catch(console.error);
-            }
-        } catch (error) {
-            console.error('خطأ في تشغيل صوت الرنين:', error);
-        }
+        callSounds.ringback.loop = true;
+        callSounds.ringback.play().catch(console.error);
     },
 
     startRingtone() {
-        try {
-            callSounds.ringtone.currentTime = 0;
-            callSounds.ringtone.loop = true;
-            const playPromise = callSounds.ringtone.play();
-            if (playPromise) {
-                playPromise.catch(console.error);
-            }
-        } catch (error) {
-            console.error('خطأ في تشغيل نغمة الرنين:', error);
-        }
-    },
-
-    playEndCall() {
-        try {
-            callSounds.callEnd.currentTime = 0;
-            const playPromise = callSounds.callEnd.play();
-            if (playPromise) {
-                playPromise.catch(console.error);
-            }
-        } catch (error) {
-            console.error('خطأ في تشغيل صوت إنهاء المكالمة:', error);
-        }
+        callSounds.ringtone.loop = true;
+        callSounds.ringtone.play().catch(console.error);
     },
 
     stopAll() {
         Object.values(callSounds).forEach(sound => {
-            try {
-                sound.pause();
-                sound.currentTime = 0;
-            } catch (error) {
-                console.error('خطأ في إيقاف الصوت:', error);
-            }
+            sound.pause();
+            sound.currentTime = 0;
         });
     }
 };
-
-// تحديث دالة معالجة المكالمة الواردة
 async function handleIncomingCall(callData) {
     const callerSnapshot = await database.ref(`users/${callData.from}`).once('value');
     const callerData = callerSnapshot.val();
@@ -6151,9 +6029,6 @@ async function handleIncomingCall(callData) {
     
     // تشغيل نغمة الرنين
     callAudio.startRingtone();
-    
-    // بدء العداد التنازلي
-    startCallTimer();
     
     const result = await Swal.fire({
         title: `${callerData.username} يتصل بك`,
@@ -6166,11 +6041,11 @@ async function handleIncomingCall(callData) {
         allowEscapeKey: false
     });
 
-    // إيقاف نغمة الرنين والمؤقت
+    // إيقاف نغمة الرنين
     callAudio.stopAll();
-    clearCallTimer();
 
     if (result.isConfirmed) {
+        // الرد على المكالمة
         await database.ref(`calls/${callData.from}/status`).set({
             type: 'answered',
             from: currentUser.uid,
@@ -6179,23 +6054,22 @@ async function handleIncomingCall(callData) {
         
         showCallInterface(isVideoCall ? 'video' : 'voice');
         setupPeerConnection();
+        
     } else {
+        // رفض المكالمة
         await database.ref(`calls/${callData.from}/status`).set({
             type: 'rejected',
             from: currentUser.uid,
             timestamp: Date.now()
         });
-        callAudio.playEndCall();
     }
 
+    // مسح المكالمة النشطة
     await database.ref(`calls/${currentUser.uid}/active`).remove();
 }
-
-// تحديث دالة إنهاء المكالمة
 async function endCall() {
-    clearCallTimer();
     callAudio.stopAll();
-    callAudio.playEndCall();
+    callSounds.callEnd.play().catch(console.error);
 
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -6212,6 +6086,7 @@ async function endCall() {
         callInterface.style.display = 'none';
     }
 
+    // مسح بيانات المكالمة
     if (currentChatUser) {
         await database.ref(`calls/${currentChatUser.uid}/active`).remove();
         await database.ref(`calls/${currentChatUser.uid}/status`).set({
@@ -6221,6 +6096,7 @@ async function endCall() {
         });
     }
 }
+
 
 </script>
 </body>
