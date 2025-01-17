@@ -2706,6 +2706,18 @@ audio {
 .chat-button {
     background: var(--primary-color);
 }
+
+.typing-status {
+    position: absolute;
+    bottom: -20px;
+    left: 20px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(0, 0, 0, 0.5);
+    padding: 2px 8px;
+    border-radius: 10px;
+    z-index: 1;
+}
     </style>
 </head>
 <body>
@@ -3584,6 +3596,17 @@ function startChat(uid, userData) {
     
     // إنشاء معرف المحادثة
     const chatId = getChatId(currentUser.uid, currentChatUser.uid);
+    requestNotificationPermission();
+    
+    // إعداد مراقب الكتابة
+    setupTypingListener();
+    
+    // إضافة عنصر حالة الكتابة في واجهة المستخدم
+    const statusElement = document.createElement('div');
+    statusElement.id = 'typing-status';
+    statusElement.className = 'typing-status';
+    statusElement.style.display = 'none';
+    document.querySelector('.chat-header').appendChild(statusElement);
     
     // تحميل الرسائل الخاصة بهذه المحادثة
     loadMessages(chatId);
@@ -5805,58 +5828,80 @@ function showPermissionDialog(type) {
     });
 }
 
-// تحسين معالجة الاتصال
+// تحديث دالة بدء الاتصال
 async function startCall(type) {
     try {
-        // التحقق من توفر WebRTC
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('متصفحك لا يدعم ميزة الاتصال');
-        }
-
-        // التحقق من وجود مستخدم حالي ومستخدم للمحادثة
         if (!currentUser || !currentChatUser) {
             throw new Error('معلومات المستخدم غير متوفرة');
         }
 
-        // إعدادات الوسائط
-        const mediaConstraints = {
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            },
-            video: type === 'video' ? {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user'
-            } : false
-        };
+        // التحقق من حالة المستخدم
+        const userStatusRef = database.ref(`users/${currentChatUser.uid}/status`);
+        const statusSnapshot = await userStatusRef.once('value');
+        const userStatus = statusSnapshot.val();
 
-        // طلب الأذونات وتشغيل الوسائط
-        localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-        
-        // إظهار واجهة المكالمة
+        if (userStatus !== 'online') {
+            throw new Error('المستخدم غير متصل حالياً');
+        }
+
+        const hasPermissions = await checkAndRequestPermissions(type);
+        if (!hasPermissions) return;
+
+        // إظهار واجهة الاتصال قبل بدء الاتصال الفعلي
         showCallInterface(type);
-        
-        // إضافة المستمعين للمكالمة
-        setupCallListeners();
-        
-        // إرسال طلب الاتصال
-        const callOffer = {
-            type: `${type}-call`,
-            from: currentUser.uid,
-            to: currentChatUser.uid,
-            timestamp: Date.now()
+
+        const mediaConfig = {
+            audio: mediaConstraints.audio,
+            video: type === 'video' ? mediaConstraints.video : false
         };
 
-        await database.ref(`calls/${currentChatUser.uid}/active`).set(callOffer);
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia(mediaConfig);
+            
+            // إعداد اتصال WebRTC
+            setupPeerConnection();
+            
+            // إرسال طلب الاتصال
+            await database.ref(`calls/${currentChatUser.uid}`).push({
+                type: `${type}-call-offer`,
+                from: currentUser.uid,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
 
-        // تشغيل صوت الرنين
-        playCallSound('ringback');
+            // بدء مراقبة الرد
+            setupCallResponseListener(currentChatUser.uid);
+
+        } catch (mediaError) {
+            console.error('خطأ في الوصول إلى الوسائط:', mediaError);
+            endCall();
+            throw mediaError;
+        }
 
     } catch (error) {
         handleCallError(error);
     }
+}
+
+// إضافة مراقب للرد على الاتصال
+function setupCallResponseListener(targetUserId) {
+    const responseRef = database.ref(`calls/${currentUser.uid}`);
+    responseRef.on('child_added', (snapshot) => {
+        const response = snapshot.val();
+        
+        if (response.from === targetUserId) {
+            switch(response.type) {
+                case 'call-accepted':
+                    handleCallAccepted(response);
+                    break;
+                case 'call-rejected':
+                    handleCallRejected(response);
+                    break;
+                case 'call-ended':
+                    handleCallEnded(response);
+                    break;
+            }
+        }
+    });
 }
 
 // تحسين معالجة المكالمات الواردة
@@ -6360,53 +6405,82 @@ function setupUserPresence() {
     typingRef.onDisconnect().remove();
 }
 
-// مراقبة حالة الكتابة
+// إضافة حالة الكتابة
 let typingTimeout;
-function handleTyping() {
+
+function updateTypingStatus(isTyping) {
     if (!currentUser || !currentChatUser) return;
-
-    const typingRef = database.ref(`typing/${currentChatUser.uid}/${currentUser.uid}`);
     
-    // عند بدء الكتابة
-    document.getElementById('message-input').addEventListener('input', () => {
-        typingRef.set({
-            typing: true,
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
+    const chatId = getChatId(currentUser.uid, currentChatUser.uid);
+    database.ref(`chats/${chatId}/typing/${currentUser.uid}`).set({
+        isTyping: isTyping,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
+}
 
+// إضافة مراقب حدث الكتابة
+function setupTypingListener() {
+    const messageInput = document.getElementById('message-input');
+    
+    messageInput.addEventListener('input', () => {
         clearTimeout(typingTimeout);
+        updateTypingStatus(true);
+        
         typingTimeout = setTimeout(() => {
-            typingRef.remove();
-        }, 3000);
+            updateTypingStatus(false);
+        }, 2000);
     });
 
     // مراقبة حالة كتابة المستخدم الآخر
-    database.ref(`typing/${currentUser.uid}/${currentChatUser.uid}`).on('value', (snapshot) => {
-        const typingIndicator = document.getElementById('typing-indicator');
-        if (snapshot.exists()) {
-            typingIndicator.style.display = 'block';
-            playTypingSound();
+    const chatId = getChatId(currentUser.uid, currentChatUser.uid);
+    database.ref(`chats/${chatId}/typing/${currentChatUser.uid}`).on('value', (snapshot) => {
+        const typingStatus = snapshot.val();
+        const statusElement = document.getElementById('typing-status');
+        
+        if (typingStatus && typingStatus.isTyping) {
+            statusElement.textContent = 'جاري الكتابة...';
+            statusElement.style.display = 'block';
         } else {
-            typingIndicator.style.display = 'none';
+            statusElement.style.display = 'none';
         }
     });
 }
 
-// تحسين نظام الإشعارات
+// إضافة دالة لمعالجة الإشعارات
 function setupNotifications() {
-    if (!currentUser) return;
+    const chatId = getChatId(currentUser.uid, currentChatUser.uid);
+    
+    database.ref(`chats/${chatId}/messages`).on('child_added', async (snapshot) => {
+        const messageData = snapshot.val();
+        
+        // عرض الإشعار فقط للرسائل المستلمة
+        if (messageData.senderId !== currentUser.uid && Notification.permission === 'granted') {
+            const senderSnapshot = await database.ref(`users/${messageData.senderId}`).once('value');
+            const senderData = senderSnapshot.val();
+            
+            const notification = new Notification(senderData.username, {
+                body: messageData.message || 'رسالة جديدة',
+                icon: senderData.avatarUrl || '/api/placeholder/45/45',
+                tag: chatId
+            });
 
-    // مراقبة الرسائل الجديدة
-    database.ref('messages').on('child_added', (snapshot) => {
-        const message = snapshot.val();
-        if (message.receiverId === currentUser.uid && !message.read) {
-            showNotification(message);
-            playMessageSound();
-            updateUnreadCount(message.senderId);
+            notification.onclick = () => {
+                window.focus();
+                startChat(messageData.senderId, senderData);
+            };
         }
     });
 }
 
+// طلب إذن الإشعارات عند تسجيل الدخول
+async function requestNotificationPermission() {
+    if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            setupNotifications();
+        }
+    }
+}
 // عرض الإشعارات
 function showNotification(message) {
     if (!("Notification" in window)) return;
