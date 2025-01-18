@@ -1,306 +1,281 @@
-const CACHE_NAME = 'chat-app-v1';
-const DYNAMIC_CACHE = 'chat-dynamic-v1';
+// تحديث إصدار الكاش
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `chat-app-${CACHE_VERSION}`;
+const DYNAMIC_CACHE = `chat-dynamic-${CACHE_VERSION}`;
 
+// القائمة الأساسية للملفات المطلوب تخزينها
 const urlsToCache = [
-    './index.html',
-    './manifest.json',
-    './service-worker.js',
-    './offline.html',
-    // إضافة ملفات الأصوات للتخزين المؤقت
-    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
-    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
-    '.https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/%D9%86%D8%BA%D9%85%D8%A7%D8%AA%20%D8%A7%D9%84%D9%85%D8%AD%D8%A7%D8%AF%D8%AB%D8%A7%D8%AA%2Fphone-disconnect-1.wav?alt=media&token=fd0ad13d-0e28-42d1-9d9c-ed78a99bfdd6',
-    'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
-    'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.rtl.min.css',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-    'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/sounds/ringback.wav',
+  '/sounds/ringtone.wav',
+  '/sounds/call-end.wav',
+  'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.rtl.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css'
 ];
 
-// إضافة معالجة خاصة للأصوات
-self.addEventListener('fetch', event => {
-    // تجاهل طلبات Firebase وAnalytics
-    if (event.request.url.includes('firebase') || 
-        event.request.url.includes('google-analytics') ||
-        event.request.url.includes('chrome-extension')) {
-        return;
+// إدارة الحياة في الخلفية
+let wakeLock = null;
+let isCallActive = false;
+let pushSubscription = null;
+
+// وظيفة للحفاظ على نشاط التطبيق
+async function keepAlive() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Wake Lock activated');
+        }
+    } catch (err) {
+        console.error('Wake Lock error:', err);
     }
+}
 
-    // معالجة خاصة لملفات الصوت
-    if (event.request.url.includes('/sounds/')) {
-        event.respondWith(
-            caches.match(event.request)
-                .then(response => {
-                    if (response) {
-                        return response;
-                    }
-                    return fetch(event.request)
-                        .then(networkResponse => {
-                            if (networkResponse && networkResponse.status === 200) {
-                                const cache = caches.open(CACHE_NAME);
-                                cache.then(cache => cache.put(event.request, networkResponse.clone()));
-                            }
-                            return networkResponse;
-                        })
-                        .catch(() => {
-                            // إرجاع صوت احتياطي في حالة الفشل
-                            return caches.match('./sounds/fallback.mp3');
-                        });
-                })
-        );
-        return;
-    }
-
-    
-
-// التثبيت والتخزين المؤقت
-self.addEventListener('install', event => {
+// تثبيت Service Worker
+self.addEventListener('install', (event) => {
     event.waitUntil(
         Promise.all([
-            caches.open(CACHE_NAME).then(cache => {
-                console.log('تم فتح التخزين المؤقت');
+            caches.open(CACHE_NAME).then((cache) => {
+                console.log('Caching app shell');
                 return cache.addAll(urlsToCache);
             }),
-            self.skipWaiting()
+            self.skipWaiting() // تفعيل مباشر للإصدار الجديد
         ])
     );
 });
 
-// التنشيط وتحديث التخزين المؤقت
-self.addEventListener('activate', event => {
+// تنشيط Service Worker
+self.addEventListener('activate', (event) => {
     event.waitUntil(
         Promise.all([
-            // حذف التخزين المؤقت القديم
-            caches.keys().then(cacheNames => {
+            // تنظيف الكاش القديم
+            caches.keys().then((cacheNames) => {
                 return Promise.all(
-                    cacheNames.filter(cacheName => {
-                        return cacheName.startsWith('chat-') && cacheName !== CACHE_NAME;
-                    }).map(cacheName => {
-                        console.log('حذف التخزين المؤقت القديم:', cacheName);
-                        return caches.delete(cacheName);
-                    })
+                    cacheNames
+                        .filter((cacheName) => {
+                            return cacheName.startsWith('chat-') && 
+                                   cacheName !== CACHE_NAME &&
+                                   cacheName !== DYNAMIC_CACHE;
+                        })
+                        .map((cacheName) => caches.delete(cacheName))
                 );
             }),
-            // تنشيط العامل فوراً
+            // تحديث اشتراك الإشعارات
+            self.registration.pushManager.getSubscription()
+                .then((subscription) => {
+                    pushSubscription = subscription;
+                }),
+            // تفعيل مباشر
             self.clients.claim()
         ])
     );
 });
 
-// استراتيجية التخزين المؤقت والشبكة
-self.addEventListener('fetch', event => {
-    // تجاهل طلبات Firebase وAnalytics
-    if (event.request.url.includes('firebase') || 
-        event.request.url.includes('google-analytics') ||
-        event.request.url.includes('chrome-extension')) {
+// معالجة الطلبات وتخزينها
+self.addEventListener('fetch', (event) => {
+    // معالجة خاصة لملفات الصوت
+    if (event.request.url.includes('/sounds/')) {
+        event.respondWith(handleSoundFiles(event.request));
         return;
     }
 
     event.respondWith(
         caches.match(event.request)
-            .then(async response => {
-                // إرجاع النسخة المخزنة إذا وجدت
+            .then((response) => {
                 if (response) {
-                    // تحديث التخزين المؤقت في الخلفية
-                    fetch(event.request)
-                        .then(networkResponse => {
-                            if (networkResponse && networkResponse.status === 200) {
-                                caches.open(CACHE_NAME)
-                                    .then(cache => cache.put(event.request, networkResponse));
-                            }
-                        });
                     return response;
                 }
 
-                try {
-                    const networkResponse = await fetch(event.request);
-                    // تخزين النسخة الجديدة في التخزين المؤقت
-                    if (networkResponse && networkResponse.status === 200) {
-                        const cache = await caches.open(DYNAMIC_CACHE);
-                        cache.put(event.request, networkResponse.clone());
-                    }
-                    return networkResponse;
-                } catch (error) {
-                    // إرجاع صفحة عدم الاتصال في حالة الفشل
-                    if (event.request.mode === 'navigate') {
-                        return caches.match('./offline.html');
-                    }
-                    
-                    // إرجاع صورة احتياطية للصور الفاشلة
-                    if (event.request.destination === 'image') {
-                        return caches.match('https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c');
-                    }
-
-                    throw error;
-                }
+                return fetch(event.request)
+                    .then((networkResponse) => {
+                        // تخزين الاستجابات الناجحة في الكاش
+                        if (networkResponse.ok) {
+                            const responseToCache = networkResponse.clone();
+                            caches.open(DYNAMIC_CACHE)
+                                .then((cache) => {
+                                    cache.put(event.request, responseToCache);
+                                });
+                        }
+                        return networkResponse;
+                    })
+                    .catch(() => {
+                        // عرض صفحة عدم الاتصال للطلبات HTML
+                        if (event.request.headers.get('accept').includes('text/html')) {
+                            return caches.match('/offline.html');
+                        }
+                    });
             })
     );
 });
 
-// التعامل مع الإشعارات
-self.addEventListener('push', event => {
-    const options = {
-        body: event.data.text(),
-        icon: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
-        badge: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
-        vibrate: [100, 50, 100],
-        data: {
-            dateOfArrival: Date.now(),
-            primaryKey: 1
-        },
-        actions: [
-            {
-                action: 'open',
-                title: 'فتح التطبيق',
-                icon: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c'
-            },
-            {
-                action: 'close',
-                title: 'إغلاق',
-                icon: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c'
-            }
-        ]
-    };
+// معالجة ملفات الصوت
+async function handleSoundFiles(request) {
+    const response = await caches.match(request);
+    if (response) {
+        return response;
+    }
 
-    event.waitUntil(
-        self.registration.showNotification('تطبيق المحادثة', options)
-    );
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+}
+
+// معالجة الإشعارات
+self.addEventListener('push', async (event) => {
+    if (!event.data) return;
+
+    try {
+        const data = event.data.json();
+        let notificationOptions = {
+            icon: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
+            badge: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
+            vibrate: [100, 50, 100],
+            data: { url: '/', type: data.type }
+        };
+
+        // تخصيص الإشعارات حسب النوع
+        switch (data.type) {
+            case 'incoming_call':
+                notificationOptions = {
+                    ...notificationOptions,
+                    tag: 'call-' + data.callId,
+                    body: 'مكالمة واردة من ' + data.caller,
+                    requireInteraction: true,
+                    actions: [
+                        { action: 'answer', title: 'رد' },
+                        { action: 'reject', title: 'رفض' }
+                    ],
+                    renotify: true
+                };
+                break;
+
+            case 'missed_call':
+                notificationOptions = {
+                    ...notificationOptions,
+                    tag: 'missed-' + data.callId,
+                    body: 'مكالمة فائتة من ' + data.caller,
+                    timestamp: data.timestamp
+                };
+                break;
+
+            case 'new_message':
+                notificationOptions = {
+                    ...notificationOptions,
+                    tag: 'msg-' + data.senderId,
+                    body: data.message,
+                    renotify: true
+                };
+                break;
+        }
+
+        await self.registration.showNotification(data.title, notificationOptions);
+    } catch (error) {
+        console.error('Error handling push notification:', error);
+    }
 });
 
-// التعامل مع النقر على الإشعارات
-self.addEventListener('notificationclick', event => {
+// معالجة رسائل التطبيق
+self.addEventListener('message', async (event) => {
+    if (event.data.type === 'CALL_STATUS') {
+        isCallActive = event.data.isActive;
+        
+        if (isCallActive) {
+            await keepAlive();
+            await showCallNotification(event.data);
+        } else {
+            if (wakeLock) {
+                await wakeLock.release();
+                wakeLock = null;
+            }
+            await removeCallNotification();
+        }
+    }
+});
+
+// عرض إشعار المكالمة النشطة
+async function showCallNotification(data) {
+    const notificationOptions = {
+        tag: 'ongoing-call',
+        body: 'مكالمة جارية',
+        icon: data.callerAvatar || 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
+        badge: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
+        requireInteraction: true,
+        actions: [{ action: 'endCall', title: 'إنهاء المكالمة' }],
+        silent: true
+    };
+    
+    await self.registration.showNotification('مكالمة نشطة', notificationOptions);
+}
+
+// إزالة إشعار المكالمة
+async function removeCallNotification() {
+    const notifications = await self.registration.getNotifications({
+        tag: 'ongoing-call'
+    });
+    notifications.forEach(notification => notification.close());
+}
+
+// معالجة النقر على الإشعارات
+self.addEventListener('notificationclick', (event) => {
     event.notification.close();
 
-    if (event.action === 'open') {
+    if (event.action === 'endCall') {
+        // إرسال رسالة لإنهاء المكالمة
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({ type: 'END_CALL' });
+            });
+        });
+    } else if (event.action === 'answer' || event.action === 'reject') {
+        // معالجة الرد على المكالمة
+        handleCallAction(event.action, event.notification.data);
+    } else {
+        // فتح التطبيق
         event.waitUntil(
-            clients.openWindow('https://alqasimmall.github.io/Chat.com/')
+            self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+                .then(clientList => {
+                    if (clientList.length > 0) {
+                        return clientList[0].focus();
+                    }
+                    return self.clients.openWindow('/');
+                })
         );
     }
 });
 
-// تحديث Service Worker
-self.addEventListener('message', event => {
-    if (event.data.action === 'skipWaiting') {
-        self.skipWaiting();
-    }
-});
-
-// تهيئة Firebase Messaging
-if ('firebase' in self) {
-    const firebaseConfig = {
-        apiKey: "AIzaSyDGpAHia_wEmrhnmYjrPf1n1TrAzwEMiAI",
-        authDomain: "messageemeapp.firebaseapp.com",
-        databaseURL: "https://messageemeapp-default-rtdb.firebaseio.com",
-        projectId: "messageemeapp",
-        storageBucket: "messageemeapp.appspot.com",
-        messagingSenderId: "255034474844",
-        appId: "1:255034474844:web:5e3b7a6bc4b2fb94cc4199"
+// معالجة إجراءات المكالمة
+async function handleCallAction(action, data) {
+    const message = {
+        type: action === 'answer' ? 'ANSWER_CALL' : 'REJECT_CALL',
+        callData: data
     };
 
-    firebase.initializeApp(firebaseConfig);
-
-    const messaging = firebase.messaging();
-
-    messaging.setBackgroundMessageHandler(payload => {
-        const title = 'تطبيق المحادثة';
-        const options = {
-            body: payload.data.message,
-            icon: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
-            badge: 'https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c',
-            vibrate: [100, 50, 100]
-        };
-
-        return self.registration.showNotification(title, options);
-    });
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => client.postMessage(message));
 }
 
-// تحسين تسجيل Service Worker
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-        try {
-            const registration = await navigator.serviceWorker.register('/service-worker.js');
-            console.log('تم تسجيل Service Worker بنجاح:', registration.scope);
-        } catch (error) {
-            console.error('فشل تسجيل Service Worker:', error);
-        }
-    });
-}
-
-// إضافة معالجة الأخطاء العامة
-window.addEventListener('unhandledrejection', function(event) {
-    console.error('خطأ غير معالج:', event.reason);
-    // تجنب عرض الأخطاء التقنية للمستخدم
-    event.preventDefault();
-});
-
-// تهيئة Firebase بشكل آمن
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-
-const auth = firebase.auth();
-const database = firebase.database();
-const storage = firebase.storage();
-
-// إضافة معالجة أخطاء أفضل
-auth.onAuthStateChanged(async (user) => {
-    try {
-        if (user) {
-            const snapshot = await database.ref(`users/${user.uid}`).once('value');
-            const userData = snapshot.val();
-            
-            if (userData) {
-                currentUser = {
-                    uid: user.uid,
-                    username: userData.username,
-                    userId: userData.userId,
-                    email: user.email,
-                    avatarUrl: userData.avatarUrl || defaultAvatar
-                };
-                
-                showUsersList();
-                initializeUI();
-            }
-        } else {
-            document.getElementById('chat-container').style.display = 'none';
-            document.getElementById('users-container').style.display = 'none';
-            document.getElementById('auth-container').style.display = 'block';
-            showLogin();
-        }
-    } catch (error) {
-        console.error('خطأ في مراقب حالة المصادقة:', error);
-        alert('حدث خطأ في تحميل بيانات المستخدم');
+// مزامنة البيانات في الخلفية
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'send-messages') {
+        event.waitUntil(syncMessages());
+    } else if (event.tag === 'sync-calls') {
+        event.waitUntil(syncCalls());
     }
 });
 
-// تحسين دالة listenToFriendRequests
-function listenToFriendRequests() {
-    if (!currentUser?.uid) return;
-    
-    database.ref(`friendRequests/${currentUser.uid}`).on('child_added', (snapshot) => {
-        const request = snapshot.val();
-        if (request?.status === 'pending') {
-            loadUsers();
-        }
-    });
+// مزامنة الرسائل غير المرسلة
+async function syncMessages() {
+    // تنفيذ منطق مزامنة الرسائل
+    console.log('Syncing pending messages');
 }
 
-// تحسين دالة loadMessages
-function loadMessages() {
-    if (!currentUser?.uid || !currentChatUser?.uid) return;
-    
-    const messagesContainer = document.getElementById('messages-container');
-    messagesContainer.innerHTML = '';
-    
-    const chatId = getChatId(currentUser.uid, currentChatUser.uid);
-    
-    database.ref(`chats/${chatId}/messages`).on('child_added', (snapshot) => {
-        try {
-            const messageData = snapshot.val();
-            if (messageData) {
-                displayMessage(messageData);
-            }
-        } catch (error) {
-            console.error('خطأ في تحميل الرسائل:', error);
-        }
-    });
+// مزامنة سجلات المكالمات
+async function syncCalls() {
+    // تنفيذ منطق مزامنة المكالمات
+    console.log('Syncing call logs');
 }
