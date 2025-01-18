@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تطبيق المكالمات</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.rtl.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #7C4DFF;
+            --secondary-color: #5C6BC0;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+        }
+
+        .welcome-screen {
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .room-id {
+            font-size: 24px;
+            color: var(--primary-color);
+            font-weight: bold;
+            margin: 20px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .share-link {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .share-link input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .call-interface {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            z-index: 1000;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #remote-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #local-video {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 120px;
+            height: 160px;
+            border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            object-fit: cover;
+        }
+
+        .call-controls {
+            position: absolute;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .control-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-button:hover {
+            transform: scale(1.1);
+            background: rgba(255,255,255,0.3);
+        }
+
+        .end-call {
+            background: rgba(255,68,68,0.8);
+        }
+
+        .end-call:hover {
+            background: rgba(255,68,68,1);
+        }
+
+        .join-form {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- شاشة الترحيب -->
+    <div class="welcome-screen">
+        <h2 class="mb-4">تطبيق المكالمات</h2>
+        <div id="create-room-section">
+            <button onclick="createRoom()" class="btn btn-primary btn-lg">
+                <i class="fas fa-video me-2"></i>
+                إنشاء غرفة جديدة
+            </button>
+            
+            <div id="room-info" style="display: none;">
+                <div class="room-id mt-4">
+                    <span>معرف الغرفة:</span>
+                    <span id="room-id-display"></span>
+                </div>
+                
+                <div class="share-link">
+                    <label class="form-label">رابط المشاركة:</label>
+                    <input type="text" id="share-url" readonly>
+                    <button onclick="copyShareLink()" class="btn btn-primary">
+                        <i class="fas fa-copy me-2"></i>
+                        نسخ الرابط
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <p>أو</p>
+            <button onclick="showJoinForm()" class="btn btn-outline-primary">
+                <i class="fas fa-sign-in-alt me-2"></i>
+                الانضمام إلى غرفة
+            </button>
+        </div>
+    </div>
+
+    <!-- نموذج الانضمام -->
+    <div class="join-form" id="join-form" style="display: none;">
+        <h3 class="mb-4">الانضمام إلى غرفة</h3>
+        <div class="mb-3">
+            <label class="form-label">معرف الغرفة:</label>
+            <input type="text" class="form-control" id="room-id-input">
+        </div>
+        <button onclick="joinRoom()" class="btn btn-primary w-100">
+            <i class="fas fa-sign-in-alt me-2"></i>
+            انضمام
+        </button>
+    </div>
+
+    <!-- واجهة المكالمة -->
+    <div class="call-interface" id="call-interface">
+        <div class="video-container">
+            <video id="remote-video" autoplay playsinline></video>
+            <video id="local-video" autoplay playsinline muted></video>
+            
+            <div class="call-controls">
+                <button class="control-button" onclick="toggleMic()">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button class="control-button" onclick="toggleCamera()">
+                    <i class="fas fa-video"></i>
+                </button>
+                <button class="control-button end-call" onclick="endCall()">
+                    <i class="fas fa-phone-slash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    
+    <!-- WebRTC adapter -->
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+ 
+     <script>
+         // تهيئة Firebase
+         const firebaseConfig = {
+             apiKey: "AIzaSyDGpAHia_wEmrhnmYjrPf1n1TrAzwEMiAI",
+             authDomain: "messageemeapp.firebaseapp.com",
+             databaseURL: "https://messageemeapp-default-rtdb.firebaseio.com",
+             projectId: "messageemeapp",
+             storageBucket: "messageemeapp.appspot.com",
+             messagingSenderId: "255034474844",
+             appId: "1:255034474844:web:5e3b7a6bc4b2fb94cc4199"
+         };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // متغيرات WebRTC
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+        let roomId;
+
+        const servers = {
+            iceServers: [
+                {
+                    urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302']
+                }
+            ]
+        };
+
+        // دالة إنشاء غرفة جديدة
+        async function createRoom() {
+            try {
+                // إنشاء معرف فريد للغرفة
+                roomId = Math.random().toString(36).substring(2, 7);
+                
+                // إعداد الوسائط المحلية
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+
+                document.getElementById('room-id-display').textContent = roomId;
+                document.getElementById('share-url').value = `${window.location.origin}?room=${roomId}`;
+                document.getElementById('room-info').style.display = 'block';
+
+                // إعداد واجهة المكالمة
+                document.getElementById('local-video').srcObject = localStream;
+                document.getElementById('call-interface').style.display = 'flex';
+                
+                // إنشاء اتصال WebRTC
+                await setupPeerConnection();
+
+            } catch (error) {
+                console.error("Error creating room:", error);
+                alert("حدث خطأ في إنشاء الغرفة");
+            }
+        }
+
+        // دالة إعداد اتصال WebRTC
+        async function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(servers);
+
+            // إضافة المسارات المحلية
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // استقبال المسارات البعيدة
+            peerConnection.ontrack = event => {
+                remoteStream = event.streams[0];
+                document.getElementById('remote-video').srcObject = remoteStream;
+            };
+
+            // معالجة مرشحات ICE
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    database.ref(`rooms/${roomId}/candidates/host`).push(event.candidate.toJSON());
+                }
+            };
+        }
+
+        // دالة الانضمام إلى غرفة
+        async function joinRoom() {
+            const roomIdInput = document.getElementById('room-id-input').value;
+            if (!roomIdInput) {
+                alert("الرجاء إدخال معرف الغرفة");
+                return;
+            }
+
+            try {
+                roomId = roomIdInput;
+                
+                // إعداد الوسائط المحلية
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+
+                document.getElementById('local-video').srcObject = localStream;
+                document.getElementById('call-interface').style.display = 'flex';
+                document.getElementById('join-form').style.display = 'none';
+
+                // إعداد واجهة المكالمة واتصال WebRTC
+                await setupPeerConnection();
+                
+                // إرسال طلب الاتصال
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                await database.ref(`rooms/${roomId}/offer`).set({
+                    type: offer.type,
+                    sdp: offer.sdp
+                });
+
+            } catch (error) {
+                console.error("Error joining room:", error);
+                alert("حدث خطأ في الانضمام إلى الغرفة");
+            }
+        }
+
+        // دوال التحكم في المكالمة
+        function toggleMic() {
+            const audioTrack = localStream.getAudioTracks()[0];
+            audioTrack.enabled = !audioTrack.enabled;
+            const micButton = document.querySelector('.fa-microphone').parentElement;
+            micButton.innerHTML = `<i class="fas fa-microphone${audioTrack.enabled ? '' : '-slash'}"></i>`;
+        }
+
+        function toggleCamera() {
+            const videoTrack = localStream.getVideoTracks()[0];
+            videoTrack.enabled = !videoTrack.enabled;
+            const cameraButton = document.querySelector('.fa-video').parentElement;
+            cameraButton.innerHTML = `<i class="fas fa-video${videoTrack.enabled ? '' : '-slash'}"></i>`;
+        }
+
+        function endCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            window.location.reload();
+        }
+
+        // دوال المساعدة
+        function showJoinForm() {
+            document.querySelector('.welcome-screen').style.display = 'none';
+            document.getElementById('join-form').style.display = 'block';
+        }
+
+        function copyShareLink() {
+            const shareUrl = document.getElementById('share-url');
+            shareUrl.select();
+            document.execCommand('copy');
+            alert("تم نسخ الرابط!");
+        }
+
+        // التحقق من وجود معرف غرفة في الرابط
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if (roomParam) {
+                document.getElementById('room-id-input').value = roomParam;
+                showJoinForm();
+            }
+        };
+    </script>
+</body>
+          </html>
+
+          
