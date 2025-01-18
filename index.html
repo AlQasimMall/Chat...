@@ -171,6 +171,7 @@
         </div>
 
         <div class="mt-4">
+            21
             <p>أو</p>
             <button onclick="showJoinForm()" class="btn btn-outline-primary">
                 <i class="fas fa-sign-in-alt me-2"></i>
@@ -284,74 +285,112 @@
         }
 
         // دالة إعداد اتصال WebRTC
-        async function setupPeerConnection() {
-            peerConnection = new RTCPeerConnection(servers);
+        // تحديث دالة setupPeerConnection
+async function setupPeerConnection() {
+    peerConnection = new RTCPeerConnection(servers);
 
-            // إضافة المسارات المحلية
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
+    // إضافة المسارات المحلية
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
 
-            // استقبال المسارات البعيدة
-            peerConnection.ontrack = event => {
-                remoteStream = event.streams[0];
-                document.getElementById('remote-video').srcObject = remoteStream;
-            };
+    // استقبال المسارات البعيدة
+    peerConnection.ontrack = event => {
+        remoteStream = event.streams[0];
+        document.getElementById('remote-video').srcObject = remoteStream;
+    };
 
-            // معالجة مرشحات ICE
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) {
-                    database.ref(`rooms/${roomId}/candidates/host`).push(event.candidate.toJSON());
-                }
-            };
+    // معالجة مرشحات ICE
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            database.ref(`rooms/${roomId}/candidates/${isHost ? 'host' : 'client'}`).push(event.candidate.toJSON());
         }
+    };
 
-        // دالة الانضمام إلى غرفة
-        async function joinRoom() {
-            const roomIdInput = document.getElementById('room-id-input').value;
-            if (!roomIdInput) {
-                alert("الرجاء إدخال معرف الغرفة");
-                return;
-            }
-
-            try {
-                roomId = roomIdInput;
-                
-                // إعداد الوسائط المحلية
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                });
-
-                document.getElementById('local-video').srcObject = localStream;
-                document.getElementById('call-interface').style.display = 'flex';
-                document.getElementById('join-form').style.display = 'none';
-
-                // إعداد واجهة المكالمة واتصال WebRTC
-                await setupPeerConnection();
-                
-                // إرسال طلب الاتصال
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                
-                await database.ref(`rooms/${roomId}/offer`).set({
-                    type: offer.type,
-                    sdp: offer.sdp
-                });
-
-            } catch (error) {
-                console.error("Error joining room:", error);
-                alert("حدث خطأ في الانضمام إلى الغرفة");
-            }
+    // الاستماع للعروض والإجابات
+    database.ref(`rooms/${roomId}/offer`).on('value', async snapshot => {
+        const offer = snapshot.val();
+        if (offer && !isHost) {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            await database.ref(`rooms/${roomId}/answer`).set(answer);
         }
+    });
 
-        // دوال التحكم في المكالمة
-        function toggleMic() {
-            const audioTrack = localStream.getAudioTracks()[0];
-            audioTrack.enabled = !audioTrack.enabled;
-            const micButton = document.querySelector('.fa-microphone').parentElement;
-            micButton.innerHTML = `<i class="fas fa-microphone${audioTrack.enabled ? '' : '-slash'}"></i>`;
+    database.ref(`rooms/${roomId}/answer`).on('value', async snapshot => {
+        const answer = snapshot.val();
+        if (answer && isHost) {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         }
+    });
+
+    // معالجة مرشحات ICE من الطرف الآخر
+    database.ref(`rooms/${roomId}/candidates/${isHost ? 'client' : 'host'}`).on('child_added', snapshot => {
+        const candidate = new RTCIceCandidate(snapshot.val());
+        peerConnection.addIceCandidate(candidate);
+    });
+}
+
+// تحديث دالة createRoom
+let isHost = false;
+async function createRoom() {
+    try {
+        isHost = true;
+        roomId = Math.random().toString(36).substring(2, 7);
+        
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
+
+        document.getElementById('room-id-display').textContent = roomId;
+        document.getElementById('share-url').value = `${window.location.origin}?room=${roomId}`;
+        document.getElementById('room-info').style.display = 'block';
+        document.getElementById('local-video').srcObject = localStream;
+        document.getElementById('call-interface').style.display = 'flex';
+        
+        await setupPeerConnection();
+
+        // إنشاء العرض الأولي
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        await database.ref(`rooms/${roomId}/offer`).set(offer);
+
+    } catch (error) {
+        console.error("Error creating room:", error);
+        alert("حدث خطأ في إنشاء الغرفة");
+    }
+}
+
+// تحديث دالة joinRoom
+async function joinRoom() {
+    const roomIdInput = document.getElementById('room-id-input').value;
+    if (!roomIdInput) {
+        alert("الرجاء إدخال معرف الغرفة");
+        return;
+    }
+
+    try {
+        isHost = false;
+        roomId = roomIdInput;
+        
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
+
+        document.getElementById('local-video').srcObject = localStream;
+        document.getElementById('call-interface').style.display = 'flex';
+        document.getElementById('join-form').style.display = 'none';
+
+        await setupPeerConnection();
+
+    } catch (error) {
+        console.error("Error joining room:", error);
+        alert("حدث خطأ في الانضمام إلى الغرفة");
+    }
+}
 
         function toggleCamera() {
             const videoTrack = localStream.getVideoTracks()[0];
@@ -394,6 +433,4 @@
         };
     </script>
 </body>
-          </html>
-
-          
+</html>
