@@ -241,79 +241,106 @@
 <body>
     <!-- شاشة الترحيب -->
     <div class="welcome-screen">
-        <div class="app-logo">
-            <i class="fas fa-video"></i>
-        </div>
-        <h2 class="mb-4">مكالمات الفيديو</h2>
+    <div class="app-logo">
+        <i class="fas fa-video"></i>
+    </div>
+    <h2 class="mb-4">مكالمات الفيديو</h2>
+    
+    <div class="create-room-section">
+        <button onclick="createRoom()" class="btn btn-primary btn-lg">
+            <i class="fas fa-plus me-2"></i>
+            إنشاء غرفة جديدة
+        </button>
         
-        <div class="create-room-section">
-            <button onclick="createRoom()" class="btn btn-primary btn-lg">
-                <i class="fas fa-plus me-2"></i>
-                إنشاء غرفة جديدة
-            </button>
+        <div class="room-info" id="room-info" style="display: none;">
+            <h4>معرف الغرفة</h4>
+            <div class="room-id" id="room-id-display"></div>
             
-            <div class="room-info" id="room-info" style="display: none;">
-                <h4>معرف الغرفة</h4>
-                <div class="room-id" id="room-id-display"></div>
-                
-                <div class="share-link">
-                    <input type="text" id="share-url" readonly>
-                    <button onclick="copyShareLink()" class="copy-button">
-                        <i class="fas fa-copy me-1"></i>
-                        نسخ
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="mt-4">
-            <p class="text-muted">- أو -</p>
-            <button onclick="showJoinForm()" class="btn btn-outline-primary btn-lg">
-                <i class="fas fa-sign-in-alt me-2"></i>
-                الانضمام إلى غرفة
-            </button>
-        </div>
-    </div>
-
-    <!-- واجهة المكالمة -->
-    <div class="call-interface" id="call-interface">
-        <div class="video-container">
-            <video id="remote-video" autoplay playsinline></video>
-            <video id="local-video" autoplay playsinline muted></video>
-            
-            <div class="call-controls">
-                <button class="control-button" onclick="toggleMic()" title="كتم/تشغيل الميكروفون">
-                    <i class="fas fa-microphone"></i>
-                </button>
-                <button class="control-button" onclick="toggleCamera()" title="إيقاف/تشغيل الكاميرا">
-                    <i class="fas fa-video"></i>
-                </button>
-                <button class="control-button end-call" onclick="endCall()" title="إنهاء المكالمة">
-                    <i class="fas fa-phone-slash"></i>
+            <div class="share-link">
+                <input type="text" id="share-url" readonly>
+                <button onclick="copyShareLink()" class="copy-button">
+                    <i class="fas fa-copy me-1"></i>
+                    نسخ
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- قالب الإشعارات -->
-    <template id="notification-template">
-        <div class="notification animate__animated animate__fadeInDown">
-            <i class="fas fa-user-plus fa-lg text-primary"></i>
-            <div class="notification-content">
-                <div class="notification-text"></div>
-                <div class="notification-buttons mt-2">
-                    <button class="accept-button">
-                        <i class="fas fa-check me-1"></i>
-                        قبول
-                    </button>
-                    <button class="decline-button">
-                        <i class="fas fa-times me-1"></i>
-                        رفض
-                    </button>
-                </div>
+    <div class="mt-4">
+        <p class="text-muted">- أو -</p>
+        <button onclick="showJoinForm()" class="btn btn-outline-primary btn-lg">
+            <i class="fas fa-sign-in-alt me-2"></i>
+            الانضمام إلى غرفة
+        </button>
+    </div>
+
+    <!-- نموذج الانضمام -->
+    <div class="join-form" id="join-form" style="display: none;">
+        <div class="room-info animate__animated animate__fadeIn">
+            <h3 class="mb-4">الانضمام إلى غرفة</h3>
+            <div class="mb-4">
+                <label class="form-label">أدخل معرف الغرفة:</label>
+                <input type="text" 
+                       class="form-control form-control-lg text-center" 
+                       id="room-id-input" 
+                       placeholder="XXXXX"
+                       maxlength="5"
+                       style="letter-spacing: 3px; font-size: 1.5rem;"
+                       dir="ltr">
+            </div>
+            <div class="d-grid gap-2">
+                <button onclick="joinRoom()" class="btn btn-primary btn-lg">
+                    <i class="fas fa-sign-in-alt me-2"></i>
+                    انضمام
+                </button>
+                <button onclick="window.location.reload()" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-right me-2"></i>
+                    رجوع
+                </button>
             </div>
         </div>
-    </template>
+    </div>
+</div>
+
+<!-- واجهة المكالمة -->
+<div class="call-interface" id="call-interface">
+    <div class="video-container">
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay playsinline muted></video>
+        
+        <div class="call-controls">
+            <button class="control-button" onclick="toggleMic()" title="كتم/تشغيل الميكروفون">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="control-button" onclick="toggleCamera()" title="إيقاف/تشغيل الكاميرا">
+                <i class="fas fa-video"></i>
+            </button>
+            <button class="control-button end-call" onclick="endCall()" title="إنهاء المكالمة">
+                <i class="fas fa-phone-slash"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- قالب الإشعارات -->
+<template id="notification-template">
+    <div class="notification animate__animated animate__fadeInDown">
+        <i class="fas fa-user-plus fa-lg text-primary"></i>
+        <div class="notification-content">
+            <div class="notification-text"></div>
+            <div class="notification-buttons mt-2">
+                <button class="accept-button">
+                    <i class="fas fa-check me-1"></i>
+                    قبول
+                </button>
+                <button class="decline-button">
+                    <i class="fas fa-times me-1"></i>
+                    رفض
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
 
     <!-- المكتبات المطلوبة -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
@@ -354,50 +381,53 @@
         };
 
         // دالة إنشاء غرفة جديدة
-        async function createRoom() {
-            try {
-                isHost = true;
-                roomId = Math.random().toString(36).substring(2, 7);
-                
-                // الحصول على الوسائط المحلية
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                });
+       async function createRoom() {
+    try {
+        // طلب الإذن أولاً
+        const permission = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
 
-                // تحديث واجهة المستخدم
-                document.getElementById('room-id-display').textContent = roomId;
-                document.getElementById('share-url').value = `${window.location.origin}?room=${roomId}`;
-                document.getElementById('room-info').style.display = 'block';
-                document.getElementById('local-video').srcObject = localStream;
-
-                // إعداد الغرفة في Firebase
-                await database.ref(`rooms/${roomId}`).set({
-                    hostConnected: true,
-                    status: 'waiting'
-                });
-
-                // مراقبة انضمام المستخدمين
-                database.ref(`rooms/${roomId}/guest`).on('value', async (snapshot) => {
-                    const guestData = snapshot.val();
-                    if (guestData && guestData.connected) {
-                        showNotification(
-                            'مستخدم جديد يريد الانضمام إلى الغرفة',
-                            async () => {
-                                await acceptCall();
-                            },
-                            async () => {
-                                await rejectCall();
-                            }
-                        );
-                    }
-                });
-
-            } catch (error) {
-                console.error("Error creating room:", error);
-                alert("حدث خطأ في إنشاء الغرفة");
-            }
+        if (!permission) {
+            throw new Error("لم يتم السماح بالوصول إلى الكاميرا والميكروفون");
         }
+
+        isHost = true;
+        roomId = Math.random().toString(36).substring(2, 7);
+        localStream = permission;
+
+        // تحديث واجهة المستخدم
+        document.getElementById('room-id-display').textContent = roomId;
+        document.getElementById('share-url').value = `${window.location.origin}?room=${roomId}`;
+        document.getElementById('room-info').style.display = 'block';
+        document.getElementById('local-video').srcObject = localStream;
+        document.getElementById('call-interface').style.display = 'flex';
+
+        // إعداد الغرفة في Firebase
+        await database.ref(`rooms/${roomId}`).set({
+            hostConnected: true,
+            status: 'waiting',
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        // مراقبة انضمام المستخدمين
+        database.ref(`rooms/${roomId}/guest`).on('value', snapshot => {
+            const guestData = snapshot.val();
+            if (guestData && guestData.connected) {
+                showNotification(
+                    'مستخدم جديد يريد الانضمام إلى الغرفة',
+                    async () => await acceptCall(),
+                    async () => await rejectCall()
+                );
+            }
+        });
+
+    } catch (error) {
+        console.error("Error creating room:", error);
+        alert("حدث خطأ: " + error.message);
+    }
+}
 
         // دالة الانضمام إلى غرفة (تكملة)
 async function joinRoom() {
