@@ -1,103 +1,80 @@
 const express = require('express');
 const app = express();
-const server = require('http').Server(app);
+const server = require('http').createServer(app);
 const io = require('socket.io')(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     }
 });
-const admin = require('firebase-admin');
-const cors = require('cors');
+const path = require('path');
 
-// تهيئة Firebase Admin
-admin.initializeApp({
-    credential: admin.credential.cert(require('./firebase-admin-key.json')),
-    databaseURL: "https://messageemeapp-default-rtdb.firebaseio.com"
-});
-
-app.use(cors());
 app.use(express.static('public'));
 
-const db = admin.database();
+// تخزين معرفات المستخدمين
+const users = new Map();
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log('مستخدم جديد متصل:', socket.id);
 
-    // إنشاء غرفة جديدة
-    socket.on('create-room', async () => {
-        const roomId = Math.random().toString(36).substring(2, 7);
-        
-        try {
-            await db.ref(`rooms/${roomId}`).set({
-                hostId: socket.id,
-                status: 'waiting',
-                createdAt: admin.database.ServerValue.TIMESTAMP
+    // تسجيل مستخدم جديد
+    socket.on('register', (username) => {
+        users.set(username, socket.id);
+        io.emit('users-list', Array.from(users.keys()));
+        console.log('تم تسجيل المستخدم:', username);
+    });
+
+    // إرسال طلب اتصال
+    socket.on('call-user', (data) => {
+        const targetId = users.get(data.target);
+        if (targetId) {
+            socket.to(targetId).emit('call-made', {
+                offer: data.offer,
+                caller: data.caller
             });
-
-            socket.join(roomId);
-            socket.emit('room-created', { roomId });
-        } catch (error) {
-            console.error('Error creating room:', error);
-            socket.emit('error', { message: 'Failed to create room' });
         }
     });
 
-    // الانضمام إلى غرفة
-    socket.on('join-room', async (roomId) => {
-        try {
-            const roomRef = db.ref(`rooms/${roomId}`);
-            const snapshot = await roomRef.once('value');
-            const room = snapshot.val();
-
-            if (!room) {
-                socket.emit('error', { message: 'Room not found' });
-                return;
-            }
-
-            socket.join(roomId);
-            socket.to(roomId).emit('user-joined', socket.id);
-
-            await roomRef.update({
-                guestId: socket.id,
-                status: 'connected'
+    // الرد على طلب الاتصال
+    socket.on('make-answer', (data) => {
+        const targetId = users.get(data.target);
+        if (targetId) {
+            socket.to(targetId).emit('answer-made', {
+                answer: data.answer,
+                answerer: data.answerer
             });
-        } catch (error) {
-            socket.emit('error', { message: 'Failed to join room' });
         }
     });
 
-    // تبادل معلومات WebRTC
-    socket.on('offer', (data) => {
-        socket.to(data.roomId).emit('offer', data.offer);
-    });
-
-    socket.on('answer', (data) => {
-        socket.to(data.roomId).emit('answer', data.answer);
-    });
-
+    // إرسال مرشحي ICE
     socket.on('ice-candidate', (data) => {
-        socket.to(data.roomId).emit('ice-candidate', data.candidate);
+        const targetId = users.get(data.target);
+        if (targetId) {
+            socket.to(targetId).emit('ice-candidate', {
+                candidate: data.candidate,
+                sender: data.sender
+            });
+        }
     });
 
-    // معالجة قطع الاتصال
-    socket.on('disconnect', async () => {
-        try {
-            const rooms = await db.ref('rooms').once('value');
-            rooms.forEach(async (room) => {
-                const roomData = room.val();
-                if (roomData.hostId === socket.id || roomData.guestId === socket.id) {
-                    await db.ref(`rooms/${room.key}`).remove();
-                    io.to(room.key).emit('call-ended');
-                }
-            });
-        } catch (error) {
-            console.error('Error handling disconnect:', error);
+    // قطع الاتصال
+    socket.on('disconnect', () => {
+        let disconnectedUser;
+        for (const [username, id] of users.entries()) {
+            if (id === socket.id) {
+                disconnectedUser = username;
+                break;
+            }
+        }
+        if (disconnectedUser) {
+            users.delete(disconnectedUser);
+            io.emit('users-list', Array.from(users.keys()));
+            io.emit('user-disconnected', disconnectedUser);
         }
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`الخادم يعمل على المنفذ ${PORT}`);
 });
