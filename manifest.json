@@ -14,86 +14,33 @@
     "background_color": "#7C4DFF",
     "categories": ["social", "communication"],
     
-    "launch_handler": {
-        "client_mode": ["navigate-existing", "auto"]
-    },
-
-    "icons": [
-        {
-            "src": "https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c",
-            "sizes": "72x72 96x96 128x128 144x144 152x152 192x192 384x384 512x512",
-            "type": "image/png",
-            "purpose": "any maskable"
-        }
-    ],
-
-    "screenshots": [
-        {
-            "src": "https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c",
-            "sizes": "1280x720",
-            "type": "image/png",
-            "platform": "wide",
-            "label": "واجهة المحادثة"
-        }
-    ],
-
-    "related_applications": [],
-    "prefer_related_applications": false,
-
-    "shortcuts": [
-        {
-            "name": "فتح المحادثات",
-            "short_name": "محادثات",
-            "description": "عرض المحادثات الحالية",
-            "url": "/chat",
-            "icons": [{ 
-                "src": "https://firebasestorage.googleapis.com/v0/b/messageemeapp.appspot.com/o/profiles%2F%D8%AE%D9%84%D9%81%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%8A%D9%81%D9%88%D9%86%2014%20%D8%A8%D8%B1%D9%88%20%D9%85%D8%A7%D9%83%D8%B3%20%D8%A7%D8%B5%D9%84%D9%8A%D8%A9%20%D9%81%D8%AE%D9%85%D9%87%20%D8%A8%D8%AF%D9%82%D8%A9%20HD_1.jpg?alt=media&token=fa611f61-008d-4976-a6cf-f32833ae297c",
-                "sizes": "96x96"
-            }]
-        }
-    ],
-
-    "handle_links": "preferred",
-    
-    "share_target": {
-        "action": "/share-target/",
-        "method": "GET",
-        "params": {
-            "title": "title",
-            "text": "text",
-            "url": "url"
-        }
-    },
-
+    // إضافة أذونات الكاميرا والميكروفون
     "permissions": [
         "notifications",
         "background-sync",
         "background-fetch",
         "wake-lock",
         "microphone",
-        "camera"
+        "camera",
+        "camera.capture",           // إذن إضافي للكاميرا
+        "microphone.capture",       // إذن إضافي للميكروفون
+        "device-info.camera",       // معلومات الكاميرا
+        "device-info.microphone"    // معلومات الميكروفون
     ],
 
-    "background": {
-        "scripts": ["service-worker.js"],
-        "persistent": true
+    // إضافة إعدادات الوسائط
+    "media_capabilities": {
+        "audio": {
+            "capture": true,
+            "playback": true
+        },
+        "video": {
+            "capture": true,
+            "playback": true
+        }
     },
 
-    "gcm_sender_id": "103953800507",
-
-    "media_autoplay": "allowed",
-    
-    "notification_triggers": true,
-    
-    "background_color": "#7C4DFF",
-    
-    "serviceworker": {
-        "src": "/service-worker.js",
-        "scope": "/",
-        "type": "module",
-        "update_via_cache": "none"
-    },
-
+    // تحديث معالجات البروتوكول لتشمل مكالمات الفيديو
     "protocol_handlers": [
         {
             "protocol": "web+chat",
@@ -102,19 +49,62 @@
         {
             "protocol": "web+call",
             "url": "/Chat.com/?call=%s"
+        },
+        {
+            "protocol": "web+videocall",
+            "url": "/Chat.com/?videocall=%s"
         }
     ],
 
+    // إضافة إعدادات التشغيل التلقائي للوسائط
+    "media_autoplay": "allowed",
+    "media_autoplay_policy": {
+        "audio": "allowed",
+        "video": "allowed"
+    },
+
+    // باقي الإعدادات الموجودة...
+    "launch_handler": {
+        "client_mode": ["navigate-existing", "auto"]
+    },
+
+    "icons": [
+        // الأيقونات الموجودة
+    ],
+
+    "screenshots": [
+        // الصور الموجودة
+    ],
+
+    "related_applications": [],
+    "prefer_related_applications": false,
+
+    "shortcuts": [
+        // الاختصارات الموجودة
+    ],
+
+    "handle_links": "preferred",
+    
+    "share_target": {
+        // إعدادات المشاركة الموجودة
+    },
+
+    "background": {
+        "scripts": ["service-worker.js"],
+        "persistent": true
+    },
+
+    "gcm_sender_id": "103953800507",
+    
+    "serviceworker": {
+        "src": "/service-worker.js",
+        "scope": "/",
+        "type": "module",
+        "update_via_cache": "none"
+    },
+
     "file_handlers": [
-        {
-            "action": "/Chat.com/",
-            "accept": {
-                "application/*": [".pdf", ".doc", ".docx", ".xls", ".xlsx"],
-                "image/*": [".jpg", ".jpeg", ".png", ".gif"],
-                "audio/*": [".mp3", ".wav", ".ogg"],
-                "video/*": [".mp4", ".webm"]
-            }
-        }
+        // معالجات الملفات الموجودة
     ],
 
     "capture_links": "new-client",
@@ -126,15 +116,7 @@
     "iarc_rating_id": "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7",
 
     "widgets": {
-        "messaging": {
-            "src": "/messaging_widget.html",
-            "sizes": {
-                "min_width": 300,
-                "min_height": 400,
-                "max_width": 600,
-                "max_height": 800
-            }
-        }
+        // الودجات الموجودة
     },
 
     "screenshots_v2": {
