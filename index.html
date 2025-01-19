@@ -5,67 +5,166 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>دردشة الفيديو</title>
     <style>
+        /* إعدادات الصفحة العامة */
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: #f0f2f5;
+            padding: 0;
+            background: linear-gradient(to right, #e0eafc, #cfdef3);
+            color: #333;
         }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
         }
+
+        /* عنوان الصفحة */
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #0d6efd;
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* تسجيل الدخول */
+        #login-section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 10px;
+            padding: 20px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #username {
+            padding: 10px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        #login-section button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            background-color: #0d6efd;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #login-section button:hover {
+            background-color: #0b5ed7;
+        }
+
+        /* قسم الدردشة */
+        #chat-section {
+            display: none;
+        }
+
         .video-container {
             display: flex;
             gap: 20px;
+            justify-content: center;
             margin-bottom: 20px;
         }
+
         .video-wrapper {
             flex: 1;
             background-color: #000;
             border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
         }
+
         video {
             width: 100%;
             height: 300px;
             object-fit: cover;
         }
+
+        /* قائمة المستخدمين */
         .users-list {
-            background-color: white;
+            background: #ffffff;
             padding: 15px;
             border-radius: 8px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
         }
-        .user-item {
-            padding: 8px;
-            margin: 5px;
-            background-color: #e9ecef;
-            border-radius: 4px;
-            cursor: pointer;
+
+        .users-list h3 {
+            margin-bottom: 10px;
+            color: #0d6efd;
         }
+
+        .user-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #e9ecef;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
         .user-item:hover {
             background-color: #dee2e6;
+            transform: scale(1.02);
         }
+
+        /* أزرار التحكم */
         .controls {
             display: flex;
-            gap: 10px;
+            gap: 15px;
             justify-content: center;
+            margin-top: 20px;
         }
+
         button {
-            padding: 10px 20px;
+            padding: 12px 25px;
+            font-size: 1rem;
             border: none;
-            border-radius: 4px;
+            border-radius: 5px;
             background-color: #0d6efd;
             color: white;
             cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
         }
+
         button:hover {
             background-color: #0b5ed7;
+            transform: scale(1.05);
         }
+
         button:disabled {
             background-color: #6c757d;
             cursor: not-allowed;
+        }
+
+        /* تصميم أكثر جمالية لعناصر التحكم */
+        #callButton {
+            background-color: #198754;
+        }
+
+        #callButton:hover {
+            background-color: #157347;
+        }
+
+        #hangupButton {
+            background-color: #dc3545;
+        }
+
+        #hangupButton:hover {
+            background-color: #bb2d3b;
         }
     </style>
 </head>
@@ -73,12 +172,14 @@
     <div class="container">
         <h1>دردشة الفيديو</h1>
         
+        <!-- قسم تسجيل الدخول -->
         <div id="login-section">
             <input type="text" id="username" placeholder="أدخل اسمك">
             <button onclick="register()">دخول</button>
         </div>
 
-        <div id="chat-section" style="display: none;">
+        <!-- قسم الدردشة -->
+        <div id="chat-section">
             <div class="video-container">
                 <div class="video-wrapper">
                     <video id="localVideo" autoplay muted playsinline></video>
@@ -88,11 +189,13 @@
                 </div>
             </div>
 
+            <!-- قائمة المستخدمين -->
             <div class="users-list">
                 <h3>المستخدمون المتصلون</h3>
                 <div id="usersList"></div>
             </div>
 
+            <!-- أدوات التحكم -->
             <div class="controls">
                 <button id="callButton" disabled>اتصال</button>
                 <button id="hangupButton" disabled>إنهاء</button>
@@ -100,6 +203,7 @@
         </div>
     </div>
 
+    
     <script src="/socket.io/socket.io.js"></script>
     <script>
         let socket;
