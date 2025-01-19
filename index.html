@@ -379,6 +379,37 @@
                 }
             ]
         };
+        
+        async function createRoom() {
+    try {
+        // طلب الأذونات أولاً
+        localStream = await requestMediaPermissions();
+        if (!localStream) return;
+
+        // باقي الكود...
+        isHost = true;
+        roomId = Math.random().toString(36).substring(2, 7);
+        
+        document.getElementById('room-id-display').textContent = roomId;
+        document.getElementById('share-url').value = `${window.location.origin}?room=${roomId}`;
+        document.getElementById('room-info').style.display = 'block';
+        document.getElementById('local-video').srcObject = localStream;
+        document.getElementById('call-interface').style.display = 'flex';
+
+        await database.ref(`rooms/${roomId}`).set({
+            hostConnected: true,
+            status: 'waiting'
+        });
+
+    } catch (error) {
+        console.error("Error:", error);
+        if (error.name === 'NotAllowedError') {
+            alert('يجب السماح بالوصول إلى الكاميرا والميكروفون لإنشاء غرفة');
+        } else {
+            alert('حدث خطأ: ' + error.message);
+        }
+    }
+}
 
         // دالة إنشاء غرفة جديدة
        async function createRoom() {
@@ -664,6 +695,26 @@ window.onload = () => {
         showJoinForm();
     }
 };
+
+async function requestMediaPermissions() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: true
+        });
+        return stream;
+    } catch (error) {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            alert('يرجى السماح بالوصول إلى الكاميرا والميكروفون للمتابعة');
+        } else {
+            alert('حدث خطأ في الوصول إلى الكاميرا والميكروفون: ' + error.message);
+        }
+        throw error;
+    }
+}
     </script>
 </body>
 </html>
